@@ -1,0 +1,5 @@
+train: ./data/mask_wearing/train/images
+val: ./data/mask_wearing/valid/images
+
+nc: 2
+names: ['mask', 'no-mask']

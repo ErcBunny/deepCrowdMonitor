@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+    <title>人流量地图</title>
+
+    <style type="text/css">
+        body,
+        html,
+        #allmap {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            margin: 0;
+            font-family: "微软雅黑";
+        }
+    </style>
+
+    <script type="text/javascript" src="//api.map.baidu.com/api?v=2.0&ak=ljl3w9BQY0OWeRL5SRe8BKm4mKOvC3vv">
+    </script>
+
+    <script src="//code.jquery.com/jquery-1.12.4.min.js" integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ="
+        crossorigin="anonymous">
+        </script>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"
+        integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous">
+        </script>
+
+    <script type="text/javascript" charset="utf-8">
+        $(document).ready(function () {
+            namespace = '/test';
+            var socket = io(namespace);
+
+            socket.on('connect', function () {
+                socket.emit('my_event', { data: 'I\'m connected!' });
+            });
+
+            socket.on('my_response', function (msg, cb) {
+                if (cb)
+                    cb();
+                window.number = msg.data;
+            });
+
+            socket.on('loc', function (msg, cb) {
+                window.lat = msg.lat;
+                window.lon = msg.lon;
+                if (cb)
+                    cb();
+            });
+
+            var ping_pong_times = [];
+            var start_time;
+            window.setInterval(function () {
+                start_time = (new Date).getTime();
+                socket.emit('my_ping');
+            }, 1000);
+
+            socket.on('my_pong', function () {
+                var latency = (new Date).getTime() - start_time;
+                ping_pong_times.push(latency);
+                ping_pong_times = ping_pong_times.slice(-30); // keep last 30 samples
+                var sum = 0;
+                for (var i = 0; i < ping_pong_times.length; i++)
+                    sum += ping_pong_times[i];
+                $('#ping-pong').text(Math.round(10 * sum / ping_pong_times.length) / 10);
+            });
+
+            initMap();
+        });
+    </script>
+</head>
+
+<body>
+    <img src="{{ url_for('video_feed') }}" style="display:none;">
+    <div id="allmap"></div>
+</body>
+<script type="text/javascript">
+    // 创建全局变量来记录传输数据
+    window.number = 0;
+    window.lat = 0;
+    window.lon = 0;
+
+    // 创建和初始化地图函数
+    function initMap() {
+        // 创建地图
+        var map = new BMap.Map("allmap", { minZoom: 4, maxZoom: 15 });
+        var point = new BMap.Point(116.39722, 39.90732);
+        map.centerAndZoom(point, 12);
+        window.map = map;
+
+        // 设置地图事件
+        map.enableScrollWheelZoom(true);//启用地图滚轮放大缩小
+        map.enableKeyboard(true);//启用键盘上下左右键移动地图
+        map.enableDragging(true); //启用地图拖拽事件，默认启用(可不写)
+        map.enableDoubleClickZoom(true)//启用鼠标双击放大，默认启用(可不写)
+
+        // 向地图添加控件
+        var scaleControl = new BMap.ScaleControl({ anchor: BMAP_ANCHOR_BOTTOM_LEFT });
+        scaleControl.setUnit(BMAP_UNIT_IMPERIAL);
+        map.addControl(scaleControl);
+        var navControl = new BMap.NavigationControl({ anchor: BMAP_ANCHOR_TOP_LEFT, type: BMAP_NAVIGATION_CONTROL_LARGE });
+        map.addControl(navControl);
+        var overviewControl = new BMap.OverviewMapControl({ anchor: BMAP_ANCHOR_BOTTOM_RIGHT, isOpen: true });
+        map.addControl(overviewControl);
+
+        // 向地图添加覆盖物
+        map.clearOverlays();
+        addMapOverlay(map);
+
+
+        // 刷新人流量数据
+        var __sto = setInterval;
+        window.setInterval = function (callback, timeout, param) {
+            var args = Array.prototype.slice.call(arguments, 2);
+            var _cb = function () {
+                callback.apply(null, args);
+            }
+            return __sto(_cb, timeout);
+        }
+        window.interval1 = window.setInterval(addMapOverlay, 1000, map);
+        /* setInterval(addMapOverlay,1000); */
+    }
+
+    // 点标记
+    function addMapOverlay(map) {
+        // 清除原有所有图标
+        map.clearOverlays();
+
+        var point = new BMap.Point(window.lon, window.lat);
+        var marker = new BMap.Marker(point);
+        map.addOverlay(marker);
+
+        var label = new BMap.Label(window.number, { offset: new BMap.Size(20, -10) });
+        marker.setLabel(label);
+
+        var content = '<span>该位置经度为：</span>' + window.lon +
+            '</br><span>该位置维度为：</span>' + window.lat +
+            '</br><input type="button" value="实时检测" onclick="jump1()" />' +
+            '</br><input type="button" value="移动平台控制" onclick="jump2()" />';
+
+        var opts = {
+            width: 200,             // 信息窗口宽度
+            height: 150,            // 信息窗口高度
+            title: "位置信息",     // 信息窗口标题
+        }
+        var infoWindow = new BMap.InfoWindow(content, opts);  // 创建信息窗口对象
+        infoWindow.addEventListener('open', function () {
+            clearInterval(interval1);    // 停止
+        })
+        infoWindow.addEventListener('close', function () {
+            window.interval1 = window.setInterval(addMapOverlay, 1000, map); //重新启动即可
+        })
+        marker.addEventListener("click", function () {
+            map.openInfoWindow(infoWindow, point);  // 开启信息窗口
+        });
+    }
+    
+    function jump1() {
+        window.open('http://127.0.0.1:5000/video');
+    }
+    function jump2() {
+        window.open('http://127.0.0.1:5000/control');
+    }
+</script>
+
+</html>

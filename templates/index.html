@@ -1,0 +1,97 @@
+<!DOCTYPE HTML>
+<html>
+
+<head>
+  <title>cloud_server</title>
+  <script src="//code.jquery.com/jquery-1.12.4.min.js" integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ="
+    crossorigin="anonymous"></script>
+  <script src="//cdnjs.cloudflare.com/ajax/libs/socket.io/2.2.0/socket.io.js"
+    integrity="sha256-yr4fRk/GU1ehYJPAs8P4JlTgu0Hdsp4ZKrx8bDEDC3I=" crossorigin="anonymous"></script>
+
+  <style type="text/css">
+    * {
+      margin: 0px;
+      padding: 0px;
+    }
+
+    .div_one {
+      position: relative;
+      margin: 0 auto;
+      text-align: center;
+    }
+
+    .div_one p {
+      font-size: 20px;
+      text-align: center;
+      line-height: 100px;
+    }
+
+    .div_two {
+      position: relative;
+      margin: 0 auto;
+      text-align: center;
+    }
+  </style>
+
+  <script type="text/javascript" charset="utf-8">
+    $(document).ready(function () {
+      namespace = '/test';
+      var socket = io(namespace);
+
+      socket.on('connect', function () {
+        socket.emit('my_event', { data: 'I\'m connected!' });
+      });
+
+      socket.on('my_response', function (msg, cb) {
+        $('#log').text(msg.data);
+        if (cb)
+          cb();
+      });
+      socket.on('my_response_', function (msg, cb) {
+        $('#log_').text(msg.data);
+        if (cb)
+          cb();
+      });
+      socket.on('loc', function (msg, cb) {
+        $('#lat').text(msg.lat);
+        $('#lon').text(msg.lon);
+        if (cb)
+          cb();
+      });
+
+
+      var ping_pong_times = [];
+      var start_time;
+      window.setInterval(function () {
+        start_time = (new Date).getTime();
+        socket.emit('my_ping');
+      }, 1000);
+      socket.on('my_pong', function () {
+        var latency = (new Date).getTime() - start_time;
+        ping_pong_times.push(latency);
+        ping_pong_times = ping_pong_times.slice(-30); // keep last 30 samples
+        var sum = 0;
+        for (var i = 0; i < ping_pong_times.length; i++)
+          sum += ping_pong_times[i];
+        $('#ping-pong').text(Math.round(10 * sum / ping_pong_times.length) / 10);
+      });
+    });
+  </script>
+</head>
+
+<body>
+  <h1 class="div_one">Video stream</h1>
+
+  <div class="div_two">
+    <img src="{{ url_for('video_feed') }}">
+  </div>
+
+  <p></p>
+  <p class="div_one">Average latency: <b><span id="ping-pong"></span>ms</b></p>
+  <p class="div_one">YOLO算法检测人数为：<b><span id="log"></span> 人</b></p>
+  <p class="div_one">SSDC算法检测人数为：<b><span id="log_"></span> 人</b></p>
+  <p class="div_one">经度位置为：<b><span id="lon"></span></b></p>
+  <p class="div_one">纬度位置为：<b><span id="lat"></span></b></p>
+</body>
+
+</html>
